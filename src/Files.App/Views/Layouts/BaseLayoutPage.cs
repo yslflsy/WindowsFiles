@@ -103,7 +103,7 @@ namespace Files.App.Views.Layouts
 			=> App.AppModel;
 
 		public bool AllowItemDrag
-			=> WindowContext.CanDragAndDrop;
+			=> true;
 
 		protected FastContextFlyout ItemContextFlyoutHost { get; } = new();
 		protected FastContextFlyout BaseContextFlyoutHost { get; } = new();
