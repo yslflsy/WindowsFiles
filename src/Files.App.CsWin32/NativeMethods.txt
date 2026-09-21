@@ -39,6 +39,12 @@ SetWindowPos
 SetFocus
 SetActiveWindow
 IsIconic
+IsZoomed
+GetWindowDC
+ReleaseDC
+GetWindowRect
+FillRect
+CreateSolidBrush
 CopyFileFromApp
 MoveFileFromApp
 DeleteFileFromApp

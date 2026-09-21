@@ -24,6 +24,8 @@ namespace Files.App
 
 		private bool CanWindowToFront { get; set; } = true;
 		private readonly Lock _canWindowToFrontLock = new();
+		private bool _isTopWindowBorderPaintQueued;
+		private const uint Windows10WindowBorderColor = 0x00707070;
 
 		protected override bool PersistPlacement => true;
 
@@ -37,6 +39,7 @@ namespace Files.App
 			AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
 			AppWindow.TitleBar.ButtonPressedBackgroundColor = Colors.Transparent;
 			AppWindow.TitleBar.ButtonHoverBackgroundColor = Colors.Transparent;
+			_ = PaintTopWindowBorderDuringStartupAsync();
 
 			// Deferred: reads the .ico from disk
 			DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -394,8 +397,77 @@ namespace Files.App
 			}
 		}
 
+		private void QueueTopWindowBorderPaint()
+		{
+			if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) || _isTopWindowBorderPaintQueued)
+				return;
+
+			_isTopWindowBorderPaintQueued = true;
+			if (!DispatcherQueue.TryEnqueue(() =>
+			{
+				_isTopWindowBorderPaintQueued = false;
+				PaintTopWindowBorder();
+			}))
+			{
+				_isTopWindowBorderPaintQueued = false;
+			}
+		}
+
+		private async Task PaintTopWindowBorderDuringStartupAsync()
+		{
+			// WinUI redraws the custom non-client frame several times during startup.
+			foreach (var delay in new[] { 500, 500, 500, 1000 })
+			{
+				await Task.Delay(delay);
+				QueueTopWindowBorderPaint();
+			}
+		}
+
+		private unsafe void PaintTopWindowBorder()
+		{
+			var hwnd = new HWND(WindowHandle);
+			if (Windows.Win32.PInvoke.IsIconic(hwnd) || Windows.Win32.PInvoke.IsZoomed(hwnd))
+				return;
+
+			RECT windowRect = default;
+			if (!Windows.Win32.PInvoke.GetWindowRect(hwnd, &windowRect))
+				return;
+
+			var windowDc = Windows.Win32.PInvoke.GetWindowDC(hwnd);
+			if (windowDc == default)
+				return;
+
+			try
+			{
+				var brush = Windows.Win32.PInvoke.CreateSolidBrush(new(Windows10WindowBorderColor));
+				if (brush == default)
+					return;
+
+				try
+				{
+					RECT borderRect = new()
+					{
+						right = windowRect.right - windowRect.left,
+						bottom = 1,
+					};
+					Windows.Win32.PInvoke.FillRect(windowDc, &borderRect, brush);
+				}
+				finally
+				{
+					Windows.Win32.PInvoke.DeleteObject(brush);
+				}
+			}
+			finally
+			{
+				Windows.Win32.PInvoke.ReleaseDC(hwnd, windowDc);
+			}
+		}
+
 		protected override bool OnWindowMessageReceived(uint message, WPARAM wParam, LPARAM lParam, ref LRESULT result)
 		{
+			if (message is Windows.Win32.PInvoke.WM_NCPAINT or Windows.Win32.PInvoke.WM_NCACTIVATE or Windows.Win32.PInvoke.WM_WINDOWPOSCHANGED)
+				QueueTopWindowBorderPaint();
+
 			if ((!CanWindowToFront) && message == Windows.Win32.PInvoke.WM_WINDOWPOSCHANGING)
 			{
 				Win32Helper.ForceWindowPosition(lParam.Value);

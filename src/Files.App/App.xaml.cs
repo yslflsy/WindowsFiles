@@ -102,22 +102,6 @@ namespace Files.App
 						FileTagsManager = provider.GetRequiredService<FileTagsManager>();
 						LibraryManager = provider.GetRequiredService<LibraryManager>();
 
-						// Warm every command and hotkey off-thread, below normal so window creation wins the cores
-						var previousPriority = Thread.CurrentThread.Priority;
-						Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-						try
-						{
-							_ = provider.GetRequiredService<ICommandManager>();
-						}
-						catch (Exception)
-						{
-							// A command ctor that needs the UI thread aborts the warm-up; it runs on first use instead
-						}
-						finally
-						{
-							Thread.CurrentThread.Priority = previousPriority;
-						}
-
 						return provider;
 					}
 					catch (Exception)
